@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Agnes Video 2.0 文生视频工具
-用法: python generate_video.py "你的视频描述"
+Agnes Video 2.0 文生视频工具 (v1.1.1)
+用法:
+  python generate_video.py "你的视频描述"              # 默认10秒
+  python generate_video.py "你的视频描述" --duration 5  # 5秒
+  python generate_video.py "你的视频描述" --duration 10 # 10秒
 """
 
 import os
@@ -11,176 +14,244 @@ import json
 import time
 import urllib.request
 import urllib.error
-
-# 修复 Windows 控制台编码
-if sys.platform == 'win32':
-    import codecs
-    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
-    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'strict')
+import argparse
 
 # ==================== 配置区 ====================
+# 如果你的 Skill 分享给了别人，建议让他们把 Key 填在 config.ini 里（更安全）
+# 但对自己用，硬编码最方便
 API_KEY = "sk-wtQ84SRJzizAfKWm9m6hbzqYvg5S7rR2ZDlLKcHouC29ncpA"
 BASE_URL = "https://apihub.agnes-ai.com/v1"
 MODEL_NAME = "agnes-video-v2.0"
 
-# 视频参数（可按需调整）
-DEFAULT_WIDTH = 1152
-DEFAULT_HEIGHT = 768
-DURATION_SECONDS = 10  # 10秒（常用）
-NUM_FRAMES = 241       # 10秒 × 24帧 = 241帧
+# 视频参数
+# 注意：Agnes API 会忽略 width/height 参数，实际输出固定为 1088x832
 FRAME_RATE = 24
 
 
-def submit_video_task(prompt):
+def log(msg):
+    """安全的打印函数，避免 Windows 编码问题"""
+    try:
+        print(msg)
+        sys.stdout.flush()
+    except Exception:
+        try:
+            sys.stdout.buffer.write((str(msg) + "\n").encode("utf-8", errors="replace"))
+            sys.stdout.buffer.flush()
+        except Exception:
+            pass
+
+
+def submit_video_task(prompt, num_frames):
     """提交视频生成任务，返回 task_id"""
     url = f"{BASE_URL}/videos"
-    
+
+    # width/height 参数会被 API 忽略，实际输出固定 1088x832
+    # num_frames 参数有效，控制视频时长
     payload = {
         "model": MODEL_NAME,
         "prompt": prompt,
-        "width": DEFAULT_WIDTH,
-        "height": DEFAULT_HEIGHT,
-        "num_frames": NUM_FRAMES,
+        "num_frames": num_frames,
         "frame_rate": FRAME_RATE
     }
-    
+
     data = json.dumps(payload).encode('utf-8')
-    
+
     headers = {
         "Authorization": f"Bearer {API_KEY}",
         "Content-Type": "application/json"
     }
-    
-    req = urllib.request.Request(url, data=data, headers=headers, method='POST')
-    
-    try:
-        with urllib.request.urlopen(req, timeout=60) as response:
-            result = json.loads(response.read().decode('utf-8'))
-            task_id = result.get("task_id")
-            if task_id:
-                print(f"\n✅ 任务已提交！Task ID: {task_id}")
-                return task_id
-            else:
-                print(f"\n❌ 提交失败: {result}")
-                sys.exit(1)
-    except urllib.error.HTTPError as e:
-        body = e.read().decode('utf-8', errors='ignore')
-        print(f"\n❌ HTTP 错误 {e.code}: {body}")
-        sys.exit(1)
-    except Exception as e:
-        print(f"\n❌ 提交任务时出错: {e}")
-        sys.exit(1)
+
+    max_attempts = 3
+    for attempt in range(1, max_attempts + 1):
+        req = urllib.request.Request(url, data=data, headers=headers, method='POST')
+        try:
+            log(f"   [尝试 {attempt}/{max_attempts}] 提交请求中...")
+            with urllib.request.urlopen(req, timeout=300) as response:
+                result = json.loads(response.read().decode('utf-8'))
+                task_id = result.get("task_id")
+                if task_id:
+                    log(f"\n[OK] 任务已提交! Task ID: {task_id}")
+                    return task_id
+                else:
+                    log(f"\n[FAIL] 提交失败，响应: {result}")
+                    err = result.get("error") or result.get("message")
+                    if err:
+                        log(f"   错误: {err}")
+                    return None
+        except urllib.error.HTTPError as e:
+            body = e.read().decode('utf-8', errors='ignore')
+            log(f"\n[HTTP ERROR] {e.code}: {body[:500]}")
+            if e.code in (401, 403, 400):
+                if e.code == 401:
+                    log("   提示: 请检查 API Key 是否正确")
+                return None
+            # 5xx 错误可以重试
+        except Exception as e:
+            log(f"\n[ERROR] 提交任务时出错: {type(e).__name__}: {e}")
+
+        if attempt < max_attempts:
+            log("   等待 3 秒后重试...")
+            time.sleep(3)
+
+    log(f"\n[FAIL] 重试 {max_attempts} 次后仍失败")
+    return None
 
 
 def poll_video_status(task_id, interval=10):
     """轮询视频任务状态，直到完成或失败"""
     url = f"{BASE_URL}/videos/{task_id}"
-    
+
     headers = {
         "Authorization": f"Bearer {API_KEY}"
     }
-    
-    print("\n⏳ 正在生成视频，请耐心等待（通常2-3分钟）...")
-    print("   （每10秒检查一次进度）\n")
-    
-    while True:
+
+    log("\n[等待] 正在生成视频，请耐心等候（通常 2-5 分钟）...")
+    log("   （每 10 秒检查一次进度）\n")
+
+    max_polls = 60  # 最多轮询 10 分钟
+    poll_count = 0
+
+    while poll_count < max_polls:
         time.sleep(interval)
-        
+        poll_count += 1
+
         req = urllib.request.Request(url, headers=headers)
-        
+
         try:
             with urllib.request.urlopen(req, timeout=30) as response:
                 result = json.loads(response.read().decode('utf-8'))
-                
+
                 status = result.get("status", "unknown")
-                print(f"   状态: {status}")
-                
+                log(f"   [{poll_count}/{max_polls}] 状态: {status}")
+
                 if status == "completed":
-                    print(f"\n🎉 视频生成完成！\n")
-                    # 兼容不同的字段名
-                    video_url = result.get("video_url") or result.get("remixed_from_video_id")
+                    log(f"\n[完成] 视频生成完成!")
+                    # Agnes API 返回的视频 URL 在 "remixed_from_video_id" 字段
+                    # (不是 "video_url"，这是之前踩过的坑)
+                    video_url = (
+                        result.get("remixed_from_video_id")
+                        or result.get("video_url")
+                        or result.get("url")
+                    )
+                    # 也检查嵌套结构
+                    if not video_url and isinstance(result.get("output"), dict):
+                        video_url = result["output"].get("video_url")
+                    if not video_url and isinstance(result.get("data"), dict):
+                        video_url = result["data"].get("video_url") or result["data"].get("url")
+
                     if video_url:
-                        print(f"📹 视频地址: {video_url}")
-                        
-                        # 下载视频
+                        log(f"[视频地址] {video_url}")
                         download_video(video_url, task_id)
                         return video_url
                     else:
-                        print("⚠️ 未找到视频地址，原始响应:")
-                        print(json.dumps(result, indent=2, ensure_ascii=False))
+                        log("[警告] 未找到视频地址，原始响应:")
+                        log(json.dumps(result, indent=2, ensure_ascii=False))
                         return None
-                        
+
                 elif status == "failed":
-                    print(f"\n❌ 视频生成失败:")
-                    print(f"   原因: {result.get('error', '未知')}")
-                    sys.exit(1)
-                    
-                elif status == "processing":
-                    print(f"   处理中...")
-                    
+                    log(f"\n[失败] 视频生成失败:")
+                    log(f"   原因: {result.get('error', '未知')}")
+                    return None
+
+                elif status in ("processing", "pending", "running", "queued"):
+                    continue  # 继续等待
+
         except urllib.error.HTTPError as e:
             body = e.read().decode('utf-8', errors='ignore')
-            print(f"   HTTP 错误 {e.code}: {body[:200]}")
+            log(f"   [HTTP ERROR] {e.code}: {body[:200]}")
             if e.code < 500:
-                break
+                log("   客户端错误，停止轮询")
+                return None
             continue
         except Exception as e:
-            print(f"   轮询出错: {e}")
+            log(f"   [POLL ERROR] {e}")
             continue
+
+    log(f"\n[超时] 轮询超时（{max_polls * interval}秒）")
+    return None
 
 
 def download_video(video_url, task_id):
     """下载视频到本地"""
     output_dir = "outputs"
     os.makedirs(output_dir, exist_ok=True)
-    
-    # 用 task_id 或时间戳命名
+
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     filename = f"agnes_video_{timestamp}.mp4"
     filepath = os.path.join(output_dir, filename)
-    
-    print(f"📥 正在下载到: {filepath}")
-    
+
+    log(f"[下载] 正在保存到: {filepath}")
+
     try:
         urllib.request.urlretrieve(video_url, filepath)
         filesize_mb = os.path.getsize(filepath) / 1024 / 1024
-        print(f"✅ 下载完成！文件大小: {filesize_mb:.2f} MB")
-        print(f"📁 文件路径: {os.path.abspath(filepath)}")
+        log(f"[OK] 下载完成! 文件大小: {filesize_mb:.2f} MB")
+        log(f"[文件] {os.path.abspath(filepath)}")
+        return filepath
     except Exception as e:
-        print(f"❌ 下载失败: {e}")
-        print(f"\n🔗 你可以手动从以下地址下载: {video_url}")
+        log(f"[下载错误] {e}")
+        log(f"\n[手动下载] 可以从以下地址下载: {video_url}")
+        return None
 
 
 def main():
-    print("=" * 60)
-    print("  Agnes Video 2.0 文生视频工具")
-    print("=" * 60)
-    
-    if len(sys.argv) > 1:
-        prompt = " ".join(sys.argv[1:])
+    parser = argparse.ArgumentParser(description="Agnes Video 2.0 文生视频工具")
+    parser.add_argument("prompt", nargs="*", help="视频描述")
+    parser.add_argument("--duration", type=int, default=10, choices=[5, 10],
+                        help="视频时长（秒），5或10，默认10")
+    args = parser.parse_args()
+
+    log("=" * 60)
+    log("  Agnes Video 2.0 Text-to-Video Tool (v1.1.1)")
+    log("=" * 60)
+
+    # 获取 prompt
+    if args.prompt:
+        prompt = " ".join(args.prompt)
     else:
-        prompt = input("\n请输入视频描述 (English works best):\n  > ").strip()
-    
-    if not prompt:
-        print("❌ 描述不能为空！")
-        sys.exit(1)
-    
-    print(f"\n📝 描述: {prompt}")
-    print(f"🎬 模型: {MODEL_NAME}")
-    print(f"⏱️ 时长: {DURATION_SECONDS}秒 ({NUM_FRAMES}帧 @ {FRAME_RATE}fps)")
-    print(f"📐 分辨率: {DEFAULT_WIDTH}x{DEFAULT_HEIGHT}")
-    print("-" * 60)
-    
+        try:
+            prompt = input("\n请输入视频描述 (英文效果更好):\n  > ").strip()
+        except Exception:
+            prompt = ""
+        if not prompt:
+            log("[错误] 描述不能为空!")
+            sys.exit(1)
+
+    # 根据时长计算帧数
+    duration = args.duration
+    num_frames = duration * FRAME_RATE + 1  # 5秒=121帧, 10秒=241帧
+
+    log(f"\n[描述] {prompt}")
+    log(f"[模型] {MODEL_NAME}")
+    log(f"[时长] {duration}秒 ({num_frames}帧 @ {FRAME_RATE}fps)")
+    log(f"[分辨率] 1088x832（API 固定输出）")
+    log("-" * 60)
+
     # Step 1: 提交任务
-    task_id = submit_video_task(prompt)
-    
+    task_id = submit_video_task(prompt, num_frames)
+    if not task_id:
+        log("\n[失败] 任务提交失败，退出")
+        sys.exit(1)
+
     # Step 2: 轮询状态
-    poll_video_status(task_id)
-    
-    print("\n" + "=" * 60)
-    print("  🎉 全部完成！")
-    print("=" * 60)
+    video_url = poll_video_status(task_id)
+
+    log("\n" + "=" * 60)
+    if video_url:
+        log("  [完成] 全部完成! 视频已保存到 outputs/ 目录")
+    else:
+        log("  [结束] 任务结束（未获得视频）")
+    log("=" * 60)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        log("\n[已中断] 用户手动取消")
+        sys.exit(130)
+    except Exception as e:
+        log(f"\n[严重错误] 未捕获异常: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

@@ -1,13 +1,13 @@
 {
   "name": "agnes-video-generator",
   "displayName": "Agnes Video 2.0 - 文生视频工具",
-  "version": "1.0.0",
-  "description": "使用 Agnes AI 的 agnes-video-v2.0 模型，将文字描述转换为短视频（10秒，720P/1080P），支持自动轮询和下载",
+  "version": "1.1.0",
+  "description": "使用 Agnes AI 的 agnes-video-v2.0 模型，将文字描述转换为短视频（5秒或10秒），支持自动轮询和下载",
   "author": "donghai2026",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/donghai2026/agnes-video-generator"
+    "url": "https://github.com/jiabaobei/agnes-video-generator"
   },
   "scripts": {
     "start": "python generate_video.py",
@@ -15,21 +15,36 @@
   },
   "keywords": [
     "video",
-    "agen",
+    "agnes",
     "text-to-video",
     "ai-video",
     "文生视频",
-    "视频生成"
+    "视频生成",
+    "agnes-video"
   ],
   "requirements": [
     "Python 3.8+",
-    "Agnes AI API Key"
+    "Agnes AI API Key (free at https://platform.agnes-ai.com)"
   ],
   "config": {
-    "api_key": "",
+    "api_key_env": "AGNES_API_KEY",
     "base_url": "https://apihub.agnes-ai.com/v1",
     "model": "agnes-video-v2.0",
     "duration_seconds": 10,
-    "resolution": "1152x768"
+    "resolution": "1088x832"
+  },
+  "changelog": {
+    "1.1.0": [
+      "新增 --duration 5|10 参数，支持5秒和10秒视频",
+      "修复视频URL字段名问题（remixed_from_video_id）",
+      "API Key 改为从环境变量读取，安全发布",
+      "提交超时从120s提升到300s，减少无谓重试",
+      "移除无效的 width/height 参数（API会忽略，固定输出1088x832）",
+      "改进 Windows 编码兼容性",
+      "增加3次重试机制"
+    ],
+    "1.0.0": [
+      "初始版本：支持10秒视频生成、自动轮询、自动下载"
+    ]
   }
 }
