@@ -1,0 +1,35 @@
+{
+  "name": "agnes-video-generator",
+  "displayName": "Agnes Video 2.0 - 文生视频工具",
+  "version": "1.0.0",
+  "description": "使用 Agnes AI 的 agnes-video-v2.0 模型，将文字描述转换为短视频（10秒，720P/1080P），支持自动轮询和下载",
+  "author": "donghai2026",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/donghai2026/agnes-video-generator"
+  },
+  "scripts": {
+    "start": "python generate_video.py",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "video",
+    "agen",
+    "text-to-video",
+    "ai-video",
+    "文生视频",
+    "视频生成"
+  ],
+  "requirements": [
+    "Python 3.8+",
+    "Agnes AI API Key"
+  ],
+  "config": {
+    "api_key": "",
+    "base_url": "https://apihub.agnes-ai.com/v1",
+    "model": "agnes-video-v2.0",
+    "duration_seconds": 10,
+    "resolution": "1152x768"
+  }
+}
