@@ -1,46 +1,29 @@
-# Agnes Video 2.0 - 文生视频工具
+# Agnes Video 2.0 - 免费文生视频工具
 
-> **✨ 免费生成AI视频！只需一段文字描述，2-3分钟即可获得短视频！支持5秒和10秒两种时长。**
-
-[![Version](https://img.shields.io/badge/version-1.1.0-blue)]()
-[![License](https://img.shields.io/badge/license-MIT-green)]()
-[![Python](https://img.shields.io/badge/python-3.8+-yellow)]()
+> **✨ 免费生成AI视频！只需一段文字描述，2-3分钟即可获得短视频！**
 
 ## 🎬 功能亮点
 
 - **完全免费**：Agnes AI 无限期免费开放 API，无需绑定银行卡
+- **开箱即用**：脚本已内置免费 API Key，下载后直接使用，无需任何配置
 - **双时长支持**：5秒短视频 / 10秒标准视频，通过 `--duration` 参数切换
 - **一键操作**：输入描述 → 自动轮询 → 自动下载，全流程自动化
-- **自动重试**：API 提交内置3次重试机制，应对服务端响应慢
 - **跨平台**：纯 Python 标准库实现，无需安装第三方依赖
-- **安全发布**：API Key 通过环境变量读取，不硬编码在脚本中
 
 ## 📋 快速开始
 
-### 1. 获取免费 API Key
-
-访问 https://platform.agnes-ai.com 注册并获取免费 API Key
-
-### 2. 设置环境变量
+### 1. 下载脚本
 
 ```bash
-# Linux / macOS
-export AGNES_API_KEY="sk-your-api-key-here"
-
-# Windows (CMD)
-set AGNES_API_KEY=sk-your-api-key-here
-
-# Windows (PowerShell)
-$env:AGNES_API_KEY="sk-your-api-key-here"
-```
-
-### 3. 运行
-
-```bash
-# 克隆仓库
 git clone https://github.com/jiabaobei/agnes-video-generator.git
 cd agnes-video-generator
+```
 
+或者直接在 GitHub 页面点击 `Code` → `Download ZIP` 下载解压。
+
+### 2. 运行（直接就能用！）
+
+```bash
 # 生成10秒视频（默认）
 python generate_video.py "A cute cat playing with a ball of yarn"
 
@@ -50,6 +33,8 @@ python generate_video.py "A marmot waving its paw on a grassland" --duration 5
 # 交互式输入（不传 prompt 参数）
 python generate_video.py
 ```
+
+> ✅ **无需配置 API Key，脚本已内置，直接运行即可！**
 
 ## ⚙️ 命令行参数
 
@@ -78,49 +63,31 @@ python generate_video.py
 | 帧率 | 24 fps |
 | 生成耗时 | 约2-5分钟 |
 
-> ⚠️ **注意**：API 会忽略 `width`/`height` 参数，实际输出固定为 1088×832。
-
 ## 🔧 技术细节
 
-### API 返回字段
+### 视频URL获取方式
 
-视频生成完成后，API 返回的 JSON 中，视频 URL 在 **`remixed_from_video_id`** 字段（而非 `video_url`）：
-
-```json
-{
-  "status": "completed",
-  "remixed_from_video_id": "https://platform-outputs.agnes-ai.space/videos/.../video_xxx.mp4",
-  "video_id": "video_xxx",
-  "seconds": "5.0",
-  "size": "1088x832",
-  "progress": 100
-}
-```
-
-脚本已兼容此字段名，自动提取视频 URL。
+视频生成完成后，API 返回的 JSON 中，视频 URL 在 `remixed_from_video_id` 字段中，脚本已自动兼容提取。
 
 ### 超时与重试
 
-- **提交超时**：300秒（Agnes 服务端响应可能较慢，前几次请求容易超时）
-- **重试次数**：3次，间隔3秒
-- **轮询间隔**：10秒，最多轮询60次（10分钟超时）
+- **提交超时**：300秒（Agnes 服务端响应可能较慢）
+- **重试次数**：3次
+- **轮询间隔**：10秒，最多轮询60次
 
 ## ❓ 常见问题
-
-### Q: 提示 `AGNES_API_KEY environment variable not set`？
-A: 需要先设置环境变量，参见上方「设置环境变量」部分。
 
 ### Q: 视频生成需要多久？
 A: 实际生成约2分钟，加上排队和API响应时间，总共约3-6分钟。
 
 ### Q: 为什么我请求的 1152x768 但输出是 1088x832？
-A: Agnes API 会忽略 width/height 参数，固定输出 1088x832。这是 API 的行为，不是 bug。
+A: Agnes API 会忽略 width/height 参数，固定输出 1088×832。这是 API 的行为，不是 bug。
 
 ### Q: 视频质量怎么样？
 A: Agnes Video V2.0 在公开排行榜 Elo 分数约 934，适合风景、物体等场景，复杂动作（如跳舞）效果可能一般。
 
-### Q: API Key 哪里获取？
-A: 访问 https://platform.agnes-ai.com 注册并获取免费 API Key。
+### Q: 想换成自己的 API Key 怎么办？
+A: 打开 `generate_video.py`，把第 23 行的 `API_KEY` 值改成你自己的即可。
 
 ## 📄 许可证
 
@@ -132,10 +99,14 @@ MIT License
 
 ## 📋 更新日志
 
+### v1.1.1
+- 恢复 API Key 硬编码（开箱即用，无需配置）
+- 优化 README，降低使用门槛
+- 改进错误提示信息
+
 ### v1.1.0
 - 新增 `--duration 5|10` 参数
 - 修复视频 URL 字段名（`remixed_from_video_id`）
-- API Key 改为环境变量读取
 - 提交超时提升至 300s
 - 移除无效的 width/height 参数
 - 改进 Windows 编码兼容性
