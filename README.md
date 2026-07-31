@@ -9,6 +9,28 @@
 - **双时长支持**：5秒短视频 / 10秒标准视频，通过 `--duration` 参数切换
 - **一键操作**：输入描述 → 自动轮询 → 自动下载，全流程自动化
 - **跨平台**：纯 Python 标准库实现，无需安装第三方依赖
+- **🆕 备用方案**：内置 OpenMontage 备用方案指引，主方案故障时一键切换
+
+## 🔄 备用方案：OpenMontage
+
+当 Agnes API 不可用时（算力卡顿、服务宕机、网络故障），可立即切换到 **OpenMontage**：
+
+- **项目地址**：https://github.com/calesthio/OpenMontage
+- **定位**：智能体驱动型视频制作系统，支持从自然语言描述自动完成调研、脚本、素材生成、剪辑、合成
+- **支持 15+ 视频生成提供商**：Kling、Runway、Google Veo、WAN 2.1 等
+- **零 API Key 可用**：Piper TTS（免费离线语音）+ Archive.org 免费素材 + Remotion 合成
+- **成本**：零 Key 完全免费；配置 1-2 个 API Key 约 $0.15-$1.50/条；全配置约 $1-$3/条
+
+**快速切换**：
+```bash
+# 查看备用方案详情
+python generate_video.py --fallback-info
+
+# 或直接克隆 OpenMontage
+git clone https://github.com/calesthio/OpenMontage.git
+cd OpenMontage
+make setup
+```
 
 ## 📋 快速开始
 
@@ -42,6 +64,7 @@ python generate_video.py
 |------|------|------|------|
 | `prompt` | 位置参数（可选） | - | 视频描述，不传则交互式输入 |
 | `--duration` | int | 10 | 视频时长，支持 `5` 或 `10` 秒 |
+| `--fallback-info` | flag | false | 显示备用方案 OpenMontage 的使用指引 |
 
 ## 📝 视频描述技巧
 
@@ -98,6 +121,11 @@ MIT License
 - [Agnes AI](https://agnes-ai.com) - 提供免费的文生视频 API
 
 ## 📋 更新日志
+
+### v1.2.0
+- **新增 OpenMontage 备用方案**：主方案（Agnes API）故障时，一键切换到 OpenMontage 智能体驱动型视频制作系统
+- 新增 `--fallback-info` 命令行参数，查看备用方案详情
+- 失败时自动提示备用方案，降低使用中断风险
 
 ### v1.1.1
 - 恢复 API Key 硬编码（开箱即用，无需配置）

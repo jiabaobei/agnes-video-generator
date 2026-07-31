@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Agnes Video 2.0 文生视频工具 (v1.1.1)
+Agnes Video 2.0 文生视频工具 (v1.2.0)
 用法:
   python generate_video.py "你的视频描述"              # 默认10秒
   python generate_video.py "你的视频描述" --duration 5  # 5秒
   python generate_video.py "你的视频描述" --duration 10 # 10秒
+  python generate_video.py --fallback-info             # 查看备用方案
 """
 
 import os
@@ -194,12 +195,65 @@ def download_video(video_url, task_id):
         return None
 
 
+def print_fallback_info():
+    """打印备用方案 OpenMontage 的使用指引"""
+    log("=" * 60)
+    log("  [备用方案] OpenMontage — 智能体驱动型视频制作系统")
+    log("=" * 60)
+    log("""
+当 Agnes API 不可用时（算力卡顿、服务宕机、网络故障），
+可以切换到 OpenMontage 作为备用视频生成方案。
+
+OpenMontage 是什么:
+  - 开源智能体驱动型视频制作系统
+  - 支持文字/图片 → 完整视频（含旁白、字幕、剪辑、合成）
+  - 支持 15+ 视频生成提供商（Kling、Runway、Google Veo、WAN 2.1 等）
+  - 零 API Key 可用（Piper TTS + Archive.org 免费素材 + Remotion 合成）
+
+快速开始:
+  1. 克隆仓库
+     git clone https://github.com/calesthio/OpenMontage.git
+     cd OpenMontage
+
+  2. 安装依赖
+     make setup
+     # 或 Windows:
+     py -3 -m venv .venv; .\\.venv\\Scripts\\Activate.ps1; python -m pip install -r requirements.txt; cd remotion-composer; npm install; cd ..; python -m pip install piper-tts
+
+  3. 配置 API Key（可选，零 Key 也能用）
+     cp .env.example .env
+     # 编辑 .env，填入至少一个视频生成 API Key
+
+  4. 在 AI 编码助手中输入需求，例如:
+     "Make a 45-second animated explainer about why the sky is blue"
+     "Create a 30-second Ghibli-style animated video of a magical library"
+
+  5. 查看实时进度:
+     python -m backlot open
+
+成本参考:
+  - 零 Key 路径: 完全免费（Piper TTS + Archive.org 素材 + Remotion 合成）
+  - 配置 1-2 个 API Key: $0.15-$1.50/条视频
+  - 全配置路径: $1-$3/条视频
+
+项目地址: https://github.com/calesthio/OpenMontage
+""")
+    log("=" * 60)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Agnes Video 2.0 文生视频工具")
     parser.add_argument("prompt", nargs="*", help="视频描述")
     parser.add_argument("--duration", type=int, default=10, choices=[5, 10],
                         help="视频时长（秒），5或10，默认10")
+    parser.add_argument("--fallback-info", action="store_true",
+                        help="显示备用方案 OpenMontage 的使用指引")
     args = parser.parse_args()
+
+    # 显示备用方案信息
+    if args.fallback_info:
+        print_fallback_info()
+        return
 
     log("=" * 60)
     log("  Agnes Video 2.0 Text-to-Video Tool (v1.1.1)")
@@ -230,7 +284,10 @@ def main():
     # Step 1: 提交任务
     task_id = submit_video_task(prompt, num_frames)
     if not task_id:
-        log("\n[失败] 任务提交失败，退出")
+        log("\n[失败] 任务提交失败")
+        log("   可能原因: API Key 无效 / 网络故障 / Agnes 服务暂时不可用")
+        log("   建议: 1) 检查网络连接  2) 稍后重试  3) 使用备用方案 OpenMontage")
+        log("   查看备用方案: python generate_video.py --fallback-info")
         sys.exit(1)
 
     # Step 2: 轮询状态
@@ -241,6 +298,8 @@ def main():
         log("  [完成] 全部完成! 视频已保存到 outputs/ 目录")
     else:
         log("  [结束] 任务结束（未获得视频）")
+        log("   建议: 1) 检查网络连接  2) 稍后重试  3) 使用备用方案 OpenMontage")
+        log("   查看备用方案: python generate_video.py --fallback-info")
     log("=" * 60)
 
 
