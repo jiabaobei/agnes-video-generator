@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Agnes Video 2.0 文生视频工具 (v1.2.0)
+Agnes Video 2.0 文生视频工具 (v1.3.0)
 用法:
   python generate_video.py "你的视频描述"              # 默认10秒
   python generate_video.py "你的视频描述" --duration 5  # 5秒
@@ -195,6 +195,85 @@ def download_video(video_url, task_id):
         return None
 
 
+def ensure_openmontage():
+    """确保 OpenMontage 已克隆到本地"""
+    openmontage_dir = "OpenMontage"
+    if os.path.exists(openmontage_dir):
+        return True
+    
+    log("[OpenMontage] 未找到本地仓库，正在自动克隆...")
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["git", "clone", "https://github.com/calesthio/OpenMontage.git", openmontage_dir],
+            capture_output=True, text=True, timeout=300
+        )
+        if result.returncode == 0:
+            log("[OpenMontage] 克隆成功")
+            return True
+        else:
+            log(f"[OpenMontage] 克隆失败: {result.stderr[:200]}")
+            return False
+    except Exception as e:
+        log(f"[OpenMontage] 克隆出错: {e}")
+        return False
+
+
+def try_openmontage_fallback(prompt, duration):
+    """尝试使用 OpenMontage 生成视频"""
+    if not ensure_openmontage():
+        return None
+    
+    log("[OpenMontage] 尝试使用备用方案生成视频...")
+    log(f"[OpenMontage] 提示词: {prompt}")
+    log(f"[OpenMontage] 时长: {duration}秒")
+    
+    # 尝试导入 OpenMontage 工具
+    try:
+        import sys
+        sys.path.insert(0, 'OpenMontage')
+        from tools.tool_registry import registry
+        registry.discover()
+        
+        # 查找视频生成工具
+        video_tools = [t for t in registry.tools if 'video' in t.name.lower() or 'generate' in t.name.lower()]
+        if video_tools:
+            tool = video_tools[0]
+            log(f"[OpenMontage] 找到工具: {tool.name}")
+            result = tool.run(prompt=prompt, duration=duration)
+            output_path = result.get('output_path') or result.get('video_path')
+            if output_path and os.path.exists(output_path):
+                log(f"[OpenMontage] 视频生成成功: {output_path}")
+                return output_path
+    except Exception as e:
+        log(f"[OpenMontage] 直接调用失败: {e}")
+    
+    # 尝试 subprocess 调用
+    try:
+        import subprocess
+        # 尝试运行 OpenMontage 的演示或简单生成命令
+        cmds = [
+            ["python", "-m", "backlot", "open"],
+            ["make", "demo"],
+        ]
+        for cmd in cmds:
+            log(f"[OpenMontage] 尝试命令: {' '.join(cmd)}")
+            result = subprocess.run(cmd, cwd="OpenMontage", capture_output=True, text=True, timeout=300)
+            if result.returncode == 0:
+                log("[OpenMontage] 命令执行成功")
+                # 查找生成的视频文件
+                for root, dirs, files in os.walk("OpenMontage"):
+                    for f in files:
+                        if f.endswith('.mp4') and 'agnes_video' not in f:
+                            video_path = os.path.join(root, f)
+                            log(f"[OpenMontage] 找到视频: {video_path}")
+                            return video_path
+    except Exception as e:
+        log(f"[OpenMontage] subprocess 失败: {e}")
+    
+    return None
+
+
 def print_fallback_info():
     """打印备用方案 OpenMontage 的使用指引"""
     log("=" * 60)
@@ -256,7 +335,7 @@ def main():
         return
 
     log("=" * 60)
-    log("  Agnes Video 2.0 Text-to-Video Tool (v1.1.1)")
+    log("  Agnes Video 2.0 Text-to-Video Tool (v1.3.0)")
     log("=" * 60)
 
     # 获取 prompt
@@ -285,10 +364,16 @@ def main():
     task_id = submit_video_task(prompt, num_frames)
     if not task_id:
         log("\n[失败] 任务提交失败")
-        log("   可能原因: API Key 无效 / 网络故障 / Agnes 服务暂时不可用")
-        log("   建议: 1) 检查网络连接  2) 稍后重试  3) 使用备用方案 OpenMontage")
-        log("   查看备用方案: python generate_video.py --fallback-info")
-        sys.exit(1)
+        log("   尝试切换到备用方案 OpenMontage...")
+        fallback_path = try_openmontage_fallback(prompt, duration)
+        if fallback_path:
+            log(f"[完成] 备用方案生成成功! 视频已保存到: {fallback_path}")
+            return
+        else:
+            log("   可能原因: API Key 无效 / 网络故障 / Agnes 服务暂时不可用")
+            log("   建议: 1) 检查网络连接  2) 稍后重试  3) 手动使用备用方案 OpenMontage")
+            log("   查看备用方案: python generate_video.py --fallback-info")
+            sys.exit(1)
 
     # Step 2: 轮询状态
     video_url = poll_video_status(task_id)
@@ -297,9 +382,14 @@ def main():
     if video_url:
         log("  [完成] 全部完成! 视频已保存到 outputs/ 目录")
     else:
-        log("  [结束] 任务结束（未获得视频）")
-        log("   建议: 1) 检查网络连接  2) 稍后重试  3) 使用备用方案 OpenMontage")
-        log("   查看备用方案: python generate_video.py --fallback-info")
+        log("  [失败] 未获得视频，尝试切换到备用方案 OpenMontage...")
+        fallback_path = try_openmontage_fallback(prompt, duration)
+        if fallback_path:
+            log(f"[完成] 备用方案生成成功! 视频已保存到: {fallback_path}")
+        else:
+            log("  [结束] 任务结束（未获得视频）")
+            log("   建议: 1) 检查网络连接  2) 稍后重试  3) 手动使用备用方案 OpenMontage")
+            log("   查看备用方案: python generate_video.py --fallback-info")
     log("=" * 60)
 
 

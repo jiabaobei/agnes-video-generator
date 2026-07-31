@@ -2,6 +2,10 @@
 
 > **✨ 免费生成AI视频！只需一段文字描述，2-3分钟即可获得短视频！**
 
+[![Version](https://img.shields.io/badge/version-1.3.0-blue)]()
+[![License](https://img.shields.io/badge/license-MIT-green)]()
+[![Python](https://img.shields.io/badge/python-3.8%2B-yellow)]()
+
 ## 🎬 功能亮点
 
 - **完全免费**：Agnes AI 无限期免费开放 API，无需绑定银行卡
@@ -121,6 +125,12 @@ MIT License
 - [Agnes AI](https://agnes-ai.com) - 提供免费的文生视频 API
 
 ## 📋 更新日志
+
+### v1.3.0
+- **真正的程序化自动切换**：主方案（Agnes API）提交失败或轮询失败时，自动检测并切换到 OpenMontage 备用方案
+- 新增 `ensure_openmontage()`：自动克隆 OpenMontage 仓库（如果尚未克隆）
+- 新增 `try_openmontage_fallback()`：尝试通过工具导入或 subprocess 调用 OpenMontage
+- 失败时不再只是打印提示，而是实际执行 fallback 流程
 
 ### v1.2.0
 - **新增 OpenMontage 备用方案**：主方案（Agnes API）故障时，一键切换到 OpenMontage 智能体驱动型视频制作系统

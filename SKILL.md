@@ -34,7 +34,7 @@ python generate_video.py
 2. **运行脚本** → 执行 `generate_video.py`
 3. **等待生成** → 脚本自动轮询，通常 2-5 分钟
 4. **获取视频** → 视频自动保存到 `outputs/` 目录
-5. **故障切换** → 若 Agnes API 失败，运行 `python generate_video.py --fallback-info` 查看 OpenMontage 备用方案
+5. **故障切换（自动）** → 若 Agnes API 失败，脚本自动检测并切换到 OpenMontage 备用方案，无需手动干预
 
 ## API 配置
 
@@ -56,4 +56,4 @@ python generate_video.py
 
 ## 版本
 
-v1.2.0
+v1.3.0
