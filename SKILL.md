@@ -1,6 +1,6 @@
 ---
 name: agnes-video-generator
-description: 免费生成AI视频的工具。用户输入视频描述后，调用 Agnes AI 的文生视频模型生成带声音的短视频，自动轮询生成进度并下载视频。主方案故障时自动切换到 OpenMontage 备用方案。
+description: 免费生成AI视频的工具。用户输入视频描述后，调用 Agnes AI 的文生视频模型生成带声音的短视频，自动轮询生成进度并下载视频。主方案故障时检测本地 OpenMontage 服务并尝试使用。
 ---
 
 # Agnes Video 2.0 - 文生视频工具
@@ -34,26 +34,8 @@ python generate_video.py
 2. **运行脚本** → 执行 `generate_video.py`
 3. **等待生成** → 脚本自动轮询，通常 2-5 分钟
 4. **获取视频** → 视频自动保存到 `outputs/` 目录
-5. **故障切换（自动）** → 若 Agnes API 失败，脚本自动检测并切换到 OpenMontage 备用方案，无需手动干预
-
-## API 配置
-
-- **Base URL**: `https://apihub.agnes-ai.com/v1`
-- **Model**: `agnes-video-v2.0`
-- **时长**: 默认10秒（241帧），也可通过 `--duration 5` 改为5秒
-- **帧率**: 24 fps
-- **实际输出分辨率**: 1088×832（API 固定输出）
-- **视频格式**: MP4（自带 AAC 音频）
-
-## 注意事项
-
-- 脚本已内置 API Key，开箱即用
-- Windows 编码已处理，不会出现乱码
-- 脚本内置3次重试机制，应对 API 超时
-- 视频生成结果保存在 `outputs/` 文件夹中
-- 英文 prompt 效果通常更好
-- 适合风景、动物、静物等场景，复杂动作效果有限
+5. **故障切换（检测本地服务）** → 若 Agnes API 失败，脚本检测本地 OpenMontage 服务（端口 3000）是否已启动，若已启动则自动尝试提交；未启动则诚实告知用户手动启动步骤
 
 ## 版本
 
-v1.3.0
+v1.4.0
