@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Agnes Video 2.0 文生视频工具 (v1.4.0)
+Agnes Video 2.0 文生视频工具 (v2.0.0)
 用法:
   python generate_video.py "你的视频描述"              # 默认10秒
   python generate_video.py "你的视频描述" --duration 5  # 5秒
@@ -30,24 +30,24 @@ MODEL_NAME: str = "agnes-video-v2.0"
 FRAME_RATE: int = 24
 
 # 网络与重试
-SUBMIT_TIMEOUT: int = 300       # 提交超时（秒）
-POLL_TIMEOUT: int = 30          # 单次轮询超时（秒）
-MAX_RETRIES: int = 3            # 提交重试次数
-MAX_POLLS: int = 60             # 最大轮询次数
-POLL_INTERVAL: int = 10         # 轮询间隔（秒）
-RETRY_DELAY: int = 3            # 重试间隔（秒）
+SUBMIT_TIMEOUT: int = 300
+POLL_TIMEOUT: int = 30
+MAX_RETRIES: int = 3
+MAX_POLLS: int = 60
+POLL_INTERVAL: int = 10
+RETRY_DELAY: int = 3
 
 # 输入限制
-MAX_PROMPT_LENGTH: int = 1000   # prompt 最大字符数
+MAX_PROMPT_LENGTH: int = 1000
 
 # 输出
 OUTPUT_DIR: str = "outputs"
 TASK_STATE_FILE: str = ".agnes_tasks.json"
 
 # User-Agent
-USER_AGENT: str = "AgnesVideoTool/1.4.0"
+USER_AGENT: str = "AgnesVideoTool/2.0.0"
 
-# Agnes API 域名白名单（用于校验视频下载 URL）
+# Agnes API 域名白名单
 ALLOWED_VIDEO_DOMAINS: set[str] = {
     "agnes-ai.com",
     "apihub.agnes-ai.com",
@@ -58,8 +58,10 @@ ALLOWED_VIDEO_DOMAINS: set[str] = {
     "agnes-ai.space",
 }
 
-# OpenMontage 备用服务默认端口
-OPENMONTAGE_DEFAULT_PORT: int = 3000
+# LibTV 配置
+LIBTV_IM_BASE: str = os.environ.get("OPENAPI_IM_BASE", os.environ.get("IM_BASE_URL", "https://im.liblib.tv"))
+LIBTV_ACCESS_KEY: str = os.environ.get("LIBTV_ACCESS_KEY", "")
+LIBTV_PROJECT_CANVAS_BASE: str = "https://www.liblib.tv/canvas?projectId="
 
 
 # ==================== 日志 ====================
@@ -73,7 +75,6 @@ def log(msg: str) -> None:
             sys.stdout.buffer.write((str(msg) + "\n").encode("utf-8", errors="replace"))
             sys.stdout.buffer.flush()
         except Exception:
-            # 至少写到 stderr，不要完全静默
             try:
                 sys.stderr.write(str(msg) + "\n")
                 sys.stderr.flush()
@@ -88,12 +89,9 @@ def _validate_video_url(url: str) -> bool:
         return False
     if not url.startswith("https://"):
         return False
-    # 提取域名
     try:
         host = url.split("/")[2].split(":")[0]
-        domain = ".".join(host.split(".")[-2:]) if "." in host else host
-        # 允许主域名及其子域
-        return any(host.endswith(d) for d in ALLOWED_VIDEO_DOMAINS) or domain == "agnes-ai.com"
+        return any(host.endswith(d) for d in ALLOWED_VIDEO_DOMAINS)
     except Exception:
         return False
 
@@ -137,29 +135,220 @@ def _load_task_state(task_id: str) -> Optional[dict[str, Any]]:
         return None
 
 
-def _check_openmontage_service(port: int = OPENMONTAGE_DEFAULT_PORT) -> bool:
-    """检测本地 OpenMontage 服务是否在运行"""
-    try:
-        with socket.create_connection(("127.0.0.1", port), timeout=2):
-            return True
-    except OSError:
-        return False
+# ==================== LibTV 备用方案 ====================
+def _libtv_headers() -> dict[str, str]:
+    return {
+        "Authorization": f"Bearer {LIBTV_ACCESS_KEY}",
+        "Content-Type": "application/json",
+    }
 
 
-def _submit_to_openmontage(prompt: str, duration: int) -> Optional[str]:
-    """向本地运行的 OpenMontage 提交任务（如果服务已启动）"""
-    if not _check_openmontage_service():
-        return None
+def _libtv_api_post(path: str, body: dict) -> dict:
+    """LibTV POST 请求"""
+    url = f"{LIBTV_IM_BASE.rstrip('/')}{path}"
+    data = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(url, data=data, method="POST", headers=_libtv_headers())
     try:
-        url = f"http://127.0.0.1:{OPENMONTAGE_DEFAULT_PORT}/api/generate"
-        payload = json.dumps({"prompt": prompt, "duration": duration}).encode("utf-8")
-        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            result = json.loads(resp.read().decode("utf-8"))
-            return result.get("video_path") or result.get("output_path")
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode("utf-8", errors="ignore") if e.fp else ""
+        log(f"[LibTV API 错误] {e.code}: {err_body[:500]}")
+        return {"error": f"HTTP {e.code}"}
+    except urllib.error.URLError as e:
+        log(f"[LibTV 网络错误] {e.reason}")
+        return {"error": str(e.reason)}
     except Exception as e:
-        log(f"[OpenMontage] 提交失败: {e}")
+        log(f"[LibTV 错误] {type(e).__name__}: {e}")
+        return {"error": str(e)}
+
+
+def _libtv_api_get(path: str) -> dict:
+    """LibTV GET 请求"""
+    url = f"{LIBTV_IM_BASE.rstrip('/')}{path}"
+    req = urllib.request.Request(url, method="GET", headers=_libtv_headers())
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode("utf-8", errors="ignore") if e.fp else ""
+        log(f"[LibTV API 错误] {e.code}: {err_body[:500]}")
+        return {"error": f"HTTP {e.code}"}
+    except urllib.error.URLError as e:
+        log(f"[LibTV 网络错误] {e.reason}")
+        return {"error": str(e.reason)}
+    except Exception as e:
+        log(f"[LibTV 错误] {type(e).__name__}: {e}")
+        return {"error": str(e)}
+
+
+def _extract_media_urls_from_messages(messages: list[dict]) -> list[str]:
+    """从 LibTV 消息中提取图片/视频 URL"""
+    urls = []
+    for msg in messages:
+        content = msg.get("content", "")
+        if isinstance(content, str):
+            # 简单提取 http/https 链接
+            words = content.split()
+            for w in words:
+                if w.startswith("https://") and ("liblib" in w or "agnes" in w or w.endswith((".mp4", ".png", ".jpg", ".jpeg"))):
+                    urls.append(w.strip("`\"',.)]"))
+        elif isinstance(content, list):
+            for part in content:
+                if isinstance(part, dict):
+                    url = part.get("url") or part.get("src") or part.get("video_url")
+                    if url:
+                        urls.append(url)
+    # 去重保序
+    seen = set()
+    unique = []
+    for u in urls:
+        if u not in seen:
+            seen.add(u)
+            unique.append(u)
+    return unique
+
+
+def _download_media(url: str, prefix: str) -> Optional[str]:
+    """下载 LibTV 生成的媒体文件"""
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    ext = ".mp4" if url.endswith(".mp4") else ".png"
+    filename = f"libtv_{prefix}_{int(time.time())}_{random.randint(1000,9999)}{ext}"
+    filepath = os.path.join(OUTPUT_DIR, filename)
+    try:
+        urllib.request.urlretrieve(url, filepath)
+        size_mb = os.path.getsize(filepath) / 1024 / 1024
+        log(f"[LibTV 下载完成] {filepath} ({size_mb:.2f} MB)")
+        return filepath
+    except Exception as e:
+        log(f"[LibTV 下载失败] {e}")
         return None
+
+
+def try_libtv_fallback(prompt: str, duration: int) -> Optional[str]:
+    """
+    尝试使用 LibTV 生成视频。
+    
+    前置条件: 环境变量 LIBTV_ACCESS_KEY 已设置。
+    收费提醒: LibTV 新用户有免费额度，超出后按会员/积分收费。
+    """
+    if not LIBTV_ACCESS_KEY:
+        log("[LibTV] 未检测到 LIBTV_ACCESS_KEY 环境变量")
+        log("   LibTV 是付费备选方案（新用户有免费额度）")
+        log("   使用步骤:")
+        log("   1. 访问 https://www.liblib.tv/ 注册账号")
+        log("   2. 进入项目 → 点击右上角【LibTV Skills】获取 Access Key")
+        log("   3. 设置环境变量: set LIBTV_ACCESS_KEY=你的密钥")
+        log("   4. 重新运行本工具")
+        log("   查看详情: https://github.com/libtv-labs/libtv-skills")
+        return None
+
+    # 收费提醒界面
+    log("=" * 60)
+    log("  [LibTV] ⚠️  收费提醒")
+    log("=" * 60)
+    log("  LibTV 新用户有免费额度，但超出后将按会员/积分收费。")
+    log("  你当前使用的是【备用方案】，建议确认剩余额度后再继续。")
+    log("  收费标准: 年卡最低 39 折，部分模型额外 6 折")
+    log("  详情: https://www.liblib.tv/")
+    log("=" * 60)
+
+    log("[LibTV] 正在创建会话...")
+    create_resp = _libtv_api_post("/openapi/session", {"message": prompt})
+    if "error" in create_resp:
+        log(f"[LibTV] 创建会话失败: {create_resp.get('error')}")
+        return None
+
+    data = create_resp.get("data", {})
+    project_uuid = data.get("projectUuid", "")
+    session_id = data.get("sessionId", "")
+    if not session_id:
+        log("[LibTV] 未返回 sessionId，无法继续")
+        return None
+
+    project_url = f"{LIBTV_PROJECT_CANVAS_BASE}{project_uuid}" if project_uuid else ""
+    log(f"[LibTV] 会话已创建: {session_id}")
+    if project_url:
+        log(f"[LibTV] 项目画布: {project_url}")
+
+    log("[LibTV] 等待生成（每 10 秒查询一次进度）...")
+    last_seq = 0
+    for attempt in range(1, 61):
+        time.sleep(10)
+        query_resp = _libtv_api_get(f"/openapi/session/{session_id}?afterSeq={last_seq}")
+        if "error" in query_resp:
+            log(f"[LibTV] 查询失败: {query_resp.get('error')}")
+            continue
+
+        messages = query_resp.get("data", {}).get("messages", [])
+        if not messages:
+            continue
+
+        for msg in messages:
+            last_seq = max(last_seq, msg.get("seq", last_seq))
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+            if role == "assistant":
+                # 检查是否生成完成（assistant 返回了媒体 URL）
+                media_urls = _extract_media_urls_from_messages([msg])
+                if media_urls:
+                    log(f"[LibTV] 检测到生成结果 ({len(media_urls)} 个文件)")
+                    for i, url in enumerate(media_urls, 1):
+                        log(f"   [{i}] {url}")
+                        if url.endswith(".mp4"):
+                            path = _download_media(url, f"video_{i}")
+                            if path:
+                                return path
+                        else:
+                            path = _download_media(url, f"image_{i}")
+                            if path:
+                                log(f"   [图片已保存] {path}")
+                    # 如果有视频 URL 但下载失败，给出 projectUrl
+                    if project_url:
+                        log(f"[LibTV] 视频可能未自动下载，请在画布中手动导出:")
+                        log(f"   {project_url}")
+                        return project_url
+
+        # 检查是否有错误状态
+        for msg in messages:
+            if msg.get("role") == "error" or "失败" in str(msg.get("content", "")):
+                log(f"[LibTV] 生成失败: {msg.get('content', '')[:200]}")
+                return None
+
+    log("[LibTV] 轮询超时（10 分钟）")
+    if project_url:
+        log(f"[LibTV] 任务仍在进行中，请访问画布查看:")
+        log(f"   {project_url}")
+    return None
+
+
+def print_fallback_info() -> None:
+    """打印备用方案信息"""
+    log("=" * 60)
+    log("  [备用方案] LibTV — 专业级 AI 视频创作平台")
+    log("=" * 60)
+    log("""
+当 Agnes API 不可用时，可切换到 LibTV 作为备用方案。
+
+⚠️ 收费提醒:
+  LibTV 新用户有免费额度，但超出后将按会员/积分收费。
+  年卡最低 39 折，部分模型额外 6 折。
+  详情: https://www.liblib.tv/
+
+快速开始:
+  1. 访问 https://www.liblib.tv/ 注册账号
+  2. 进入项目 → 点击右上角【LibTV Skills】获取 Access Key
+  3. 设置环境变量:
+     Windows: set LIBTV_ACCESS_KEY=你的密钥
+     Linux/macOS: export LIBTV_ACCESS_KEY=你的密钥
+  4. 重新运行本工具，主方案失败时会自动尝试 LibTV
+
+手动使用:
+  也可以直接访问 LibTV 官网，在无限画布中拖拽节点生成视频。
+
+项目地址: https://github.com/libtv-labs/libtv-skills
+""")
+    log("=" * 60)
 
 
 # ==================== 核心逻辑 ====================
@@ -205,9 +394,8 @@ def submit_video_task(prompt: str, num_frames: int) -> Optional[str]:
                 if e.code == 401:
                     log("   提示: 请检查 API Key 是否正确")
                 return None
-            # 5xx 错误继续重试
         except urllib.error.URLError as e:
-            log(f"\n[网络错误] {e.reason}")
+            log(f"\n[网络��误] {e.reason}")
         except json.JSONDecodeError as e:
             log(f"\n[数据解析错误] 响应不是合法 JSON: {e}")
         except OSError as e:
@@ -230,7 +418,7 @@ def poll_video_status(task_id: str, interval: int = POLL_INTERVAL) -> Optional[s
         "User-Agent": USER_AGENT,
     }
 
-    log("\n[等待] 正在生成视频，请耐心���候（通常 2-5 分钟）...")
+    log("\n[等待] 正在生成视频，请耐心等候（通常 2-5 分钟）...")
     log(f"   （每 {interval} 秒检查一次进度）\n")
 
     poll_count = 0
@@ -258,7 +446,7 @@ def poll_video_status(task_id: str, interval: int = POLL_INTERVAL) -> Optional[s
                         video_url = result["output"].get("video_url")
                     if not video_url and isinstance(result.get("data"), dict):
                         video_url = result["data"].get("video_url") or result["data"].get("url")
-                    # 国内站/新版本 API 将 URL 放在 metadata.url
+                    # 国内站 API 将 URL 放在 metadata.url
                     if not video_url and isinstance(result.get("metadata"), dict):
                         video_url = result["metadata"].get("url") or result["metadata"].get("video_url")
 
@@ -280,7 +468,6 @@ def poll_video_status(task_id: str, interval: int = POLL_INTERVAL) -> Optional[s
                     return None
 
                 elif status in ("processing", "pending", "running", "queued"):
-                    # 先检查状态，再 sleep，避免首轮无意义等待
                     if poll_count < MAX_POLLS:
                         time.sleep(interval)
                     continue
@@ -289,7 +476,7 @@ def poll_video_status(task_id: str, interval: int = POLL_INTERVAL) -> Optional[s
             body = e.read().decode("utf-8", errors="ignore")
             log(f"   [HTTP ERROR] {e.code}: {body[:200]}")
             if e.code < 500:
-                log("   客户端错误，停��轮询")
+                log("   客户端错误，停止轮询")
                 return None
         except urllib.error.URLError as e:
             log(f"   [网络错误] {e.reason}")
@@ -298,7 +485,6 @@ def poll_video_status(task_id: str, interval: int = POLL_INTERVAL) -> Optional[s
         except OSError as e:
             log(f"   [系统错误] {e}")
 
-        # 非终止状态错误后也 sleep
         if poll_count < MAX_POLLS:
             time.sleep(interval)
 
@@ -332,83 +518,13 @@ def download_video(video_url: str, task_id: str) -> Optional[str]:
     return None
 
 
-def try_openmontage_fallback(prompt: str, duration: int) -> Optional[str]:
-    """
-    尝试使用 OpenMontage 备用方案。
-    
-    诚实策略：只尝试调用**已手动启动**的本地 OpenMontage 服务，
-    不自动克隆/安装/import 那些必定失败的操作。
-    """
-    log("[OpenMontage] 检查本地备用服务是否可用...")
-    if not _check_openmontage_service():
-        log("   [OpenMontage] 本地服务未运行（默认端口 3000）")
-        log("   备用方案需要手动启动，请运行: python -m backlot open")
-        log("   或查看详细指引: python generate_video.py --fallback-info")
-        return None
-
-    log("[OpenMontage] 本地服务已就绪，尝试提交任务...")
-    result_path = _submit_to_openmontage(prompt, duration)
-    if result_path:
-        log(f"[OpenMontage] 备用方案生成成功: {result_path}")
-        return result_path
-
-    log("[OpenMontage] 服务运行中但提交失败，请检查 OpenMontage 日志")
-    return None
-
-
-def print_fallback_info() -> None:
-    """打印备用方案 OpenMontage 的使用指引"""
-    log("=" * 60)
-    log("  [备用方案] OpenMontage — 智能体驱动型视频制作系统")
-    log("=" * 60)
-    log("""
-当 Agnes API 不可用时（算力卡顿、服务宕机、网络故障），
-可以切换到 OpenMontage 作为备用视频生成方案。
-
-⚠️ 重要说明（v1.4.0 起）:
-  OpenMontage 是一个复杂的 AI 编码助手驱动系统，需要
-  Python 虚拟环境 + Node.js/npm + Piper TTS + Remotion 等
-  依赖。本工具**不再自动尝试** import/make demo 等注定失败的
-  操作。如果你已在本地运行 OpenMontage，本工具会检测到并
-  尝试自动提交；否则请按以下步骤手动启动:
-
-快速开始:
-  1. 克隆仓库
-     git clone https://github.com/calesthio/OpenMontage.git
-     cd OpenMontage
-
-  2. 安装依赖
-     make setup
-     # 或 Windows:
-     py -3 -m venv .venv; .\\.venv\\Scripts\\Activate.ps1; python -m pip install -r requirements.txt; cd remotion-composer; npm install; cd ..; python -m pip install piper-tts
-
-  3. 配置 API Key（可选，零 Key 也能用）
-     cp .env.example .env
-     # 编辑 .env，填入至少一个视频生成 API Key
-
-  4. 启动服务
-     python -m backlot open
-     # 服务运行在 http://localhost:3000
-
-  5. 回到本工具，主方案失败时会自动检测到本地服务并尝试使用
-
-成本参考:
-  - 零 Key 路径: 完全免费（Piper TTS + Archive.org 素材 + Remotion 合成）
-  - 配置 1-2 个 API Key: $0.15-$1.50/条视频
-  - 全配置路径: $1-$3/条视频
-
-项目地址: https://github.com/calesthio/OpenMontage
-""")
-    log("=" * 60)
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description="Agnes Video 2.0 文生视频工具")
     parser.add_argument("prompt", nargs="*", help="视频描述")
     parser.add_argument("--duration", type=int, default=10, choices=[5, 10],
                         help="视频时长（秒），5或10，默认10")
     parser.add_argument("--fallback-info", action="store_true",
-                        help="显示备用方案 OpenMontage 的使用指引")
+                        help="显示备用方案 LibTV 的使用指引")
     parser.add_argument("--resume", metavar="TASK_ID",
                         help="恢复指定 task_id 的轮询")
     args = parser.parse_args()
@@ -418,7 +534,7 @@ def main() -> int:
         return 0
 
     log("=" * 60)
-    log("  Agnes Video 2.0 Text-to-Video Tool (v1.4.0)")
+    log("  Agnes Video 2.0 Text-to-Video Tool (v2.0.0)")
     log("=" * 60)
 
     # 获取 prompt
@@ -442,8 +558,7 @@ def main() -> int:
         return 1
 
     # 根据时长计算帧数
-    # +1 是因为 Agnes API 的 num_frames 参数包含首帧，
-    # 实际渲染帧数 = duration * FRAME_RATE，但 API 要求总数 +1
+    # +1 是因为 Agnes API 的 num_frames 参数包含首帧
     duration = args.duration
     num_frames = duration * FRAME_RATE + 1  # 5秒=121帧, 10秒=241帧
 
@@ -472,14 +587,14 @@ def main() -> int:
     task_id = submit_video_task(prompt, num_frames)
     if not task_id:
         log("\n[失败] 任务提交失败")
-        log("   尝试切换到备用方案 OpenMontage...")
-        fallback_path = try_openmontage_fallback(prompt, duration)
+        log("   尝试切换到备用方案 LibTV...")
+        fallback_path = try_libtv_fallback(prompt, duration)
         if fallback_path:
             log(f"[完成] 备用方案生成成功! 视频已保存到: {fallback_path}")
             return 0
         else:
             log("   可能原因: API Key 无效 / 网络故障 / Agnes 服务暂时不可用")
-            log("   建议: 1) 检查网络连接  2) 稍后重试  3) 手动使用备用方案 OpenMontage")
+            log("   建议: 1) 检查网络连接  2) 稍后重试  3) 查看备用方案")
             log("   查看备用方案: python generate_video.py --fallback-info")
             return 1
 
@@ -493,14 +608,14 @@ def main() -> int:
         log("  [完成] 全部完成! 视频已保存到 outputs/ 目录")
         return 0
     else:
-        log("  [失败] 未获得视频，尝试切换到备用方案 OpenMontage...")
-        fallback_path = try_openmontage_fallback(prompt, duration)
+        log("  [失败] 未获得视频，尝试切换到备用方案 LibTV...")
+        fallback_path = try_libtv_fallback(prompt, duration)
         if fallback_path:
             log(f"[完成] 备用方案生成成功! 视频已保存到: {fallback_path}")
             return 0
         else:
             log("  [结束] 任务结束（未获得视频）")
-            log("   建议: 1) 检查网络连接  2) 稍后重试  3) 手动使用备用方案 OpenMontage")
+            log("   建议: 1) 检查网络连接  2) 稍后重试  3) 查看备用方案")
             log("   查看备用方案: python generate_video.py --fallback-info")
             return 1
 

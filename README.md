@@ -2,7 +2,7 @@
 
 > **✨ 免费生成AI视频！只需一段文字描述，2-3分钟即可获得短视频！**
 
-[![Version](https://img.shields.io/badge/version-1.4.0-blue)]()
+[![Version](https://img.shields.io/badge/version-2.0.0-blue)]()
 [![License](https://img.shields.io/badge/license-MIT-green)]()
 [![Python](https://img.shields.io/badge/python-3.8%2B-yellow)]()
 
@@ -13,34 +13,35 @@
 - **双时长支持**：5秒短视频 / 10秒标准视频，通过 `--duration` 参数切换
 - **一键操作**：输入描述 → 自动轮询 → 自动下载，全流程自动化
 - **跨平台**：纯 Python 标准库实现，无需安装第三方依赖
-- **🆕 备用方案**：内置 OpenMontage 备用方案指引，主方案故障时检测本地服务并自动尝试使用
+- **🆕 备用方案**：内置 LibTV 备用方案，主方案故障时引导用户使用（新用户有免费额度，超出后按会员/积分收费）
 
-## 🔄 备用方案：OpenMontage
+## 🔄 备用方案：LibTV
 
-当 Agnes API 不可用时（算力卡顿、服务宕机、网络故障），可立即切换到 **OpenMontage**：
+当 Agnes API 不可用时（算力卡顿、服务宕机、网络故障），可立即切换到 **LibTV**：
 
-- **项目地址**：https://github.com/calesthio/OpenMontage
-- **定位**：智能体驱动型视频制作系统，支持从自然语言描述自动完成调研、脚本、素材生成、剪辑、合成
-- **支持 15+ 视频生成提供商**：Kling、Runway、Google Veo、WAN 2.1 等
-- **零 API Key 可用**：Piper TTS（免费离线语音）+ Archive.org 免费素材 + Remotion 合成
-- **成本**：零 Key 完全免费；配置 1-2 个 API Key 约 $0.15-$1.50/条；全配置约 $1-$3/条
+- **项目地址**：https://www.liblib.tv/
+- **定位**：专业级 AI 视频创作平台，集成 Seedance 2.0、可灵 3.0、Wan 2.6 等 30+ 顶级视频模型
+- **核心能力**：无限画布 + 节点式工作流，支持剧本生成、分镜设计、图生视频、视频编辑
+- **免费额度**：新用户有免费额度，订阅用户最高赠送 300 条免费顶级视频额度
+- **成本**：年卡最低 39 折，部分模型额外 6 折；会员 SKU 价格比主流竞品低 76%
+
+> ⚠️ **收费提醒**：LibTV 是付费备选方案，免费额度用完后将按会员/积分收费。
+> 请确认剩余额度后再使用，或访问官网了解最新价格。
 
 **快速切换**：
 ```bash
 # 查看备用方案详情
 python generate_video.py --fallback-info
 
-# 或直接克隆 OpenMontage 并启动服务
-git clone https://github.com/calesthio/OpenMontage.git
-cd OpenMontage
-make setup
-python -m backlot open
+# 或直接访问 LibTV 官网注册使用
+https://www.liblib.tv/
 ```
 
-> ⚠️ **注意**：OpenMontage 是一个复杂的 AI 编码助手驱动系统，需要 Python 虚拟环境 + Node.js/npm 等依赖。
-> 本工具**不再自动尝试** import/make demo 等注定失败的操作。
-> 如果你已在本地运行 OpenMontage（默认端口 3000），主方案失败时会自动检测到并尝试提交任务；
-> 否则请手动启动服务后重试。
+**手动使用步骤**：
+1. 访问 https://www.liblib.tv/ 注册账号
+2. 进入项目 → 点击右上角【LibTV Skills】获取 Access Key
+3. 设置环境变量: `set LIBTV_ACCESS_KEY=你的密钥`（Windows）或 `export LIBTV_ACCESS_KEY=你的密钥`（macOS/Linux）
+4. 重新运行本工具，主方案失败时会自动尝试 LibTV
 
 ## 📋 快速开始
 
@@ -74,7 +75,7 @@ python generate_video.py
 |------|------|------|------|
 | `prompt` | 位置参数（可选） | - | 视频描述，不传则交互式输入 |
 | `--duration` | int | 10 | 视频时长，支持 `5` 或 `10` 秒 |
-| `--fallback-info` | flag | false | 显示备用方案 OpenMontage 的使用指引 |
+| `--fallback-info` | flag | false | 显示备用方案 LibTV 的使用指引 |
 | `--resume` | string | - | 恢复指定 task_id 的轮询（中断后继续） |
 
 ## 📝 视频描述技巧
@@ -133,8 +134,8 @@ A: 打开 `generate_video.py`，把第 23 行的 `API_KEY` 值改成你自己的
 ### Q: 轮询时按 Ctrl+C 中断了怎么办？
 A: 重新运行 `python generate_video.py --resume <之前的 task_id>` 即可继续等待，无需重新提交。
 
-### Q: 备用方案（OpenMontage）怎么用��
-A: 先运行 `python generate_video.py --fallback-info` 查看指引，或按 README 中的步骤手动启动 OpenMontage 服务。主方案失败时会自动检测本地服务。
+### Q: 备用方案（LibTV）怎么用？
+A: 先运行 `python generate_video.py --fallback-info` 查看指引。LibTV 需要注册账号并获取 Access Key，新用户有免费额度，超出后按会员/积分收费。
 
 ## 📄 许可证
 
@@ -145,6 +146,18 @@ MIT License
 - [Agnes AI](https://agnes-ai.com) - 提供免费的文生视频 API
 
 ## 📋 更新日志
+
+### v2.0.0
+- **备用方案切换为 LibTV**：移除 OpenMontage 备用方案（过于复杂，无法自动切换），改为 LibTV 作为付费备选方案
+- **新增收费提醒界面**：使用 LibTV 前弹出明确提醒，告知用户免费额度用完后将收费
+- **LibTV 自动集成**：设置 `LIBTV_ACCESS_KEY` 环境变量后，主方案失败时自动尝试 LibTV
+- **删除 OpenMontage 相关代码**：`ensure_openmontage()`、`try_openmontage_fallback()` 等函数已移除
+
+### v1.4.1
+- **国内节点修复**：BASE_URL 改为 `https://apihub.agnes-ai.cn/v1`（Agnes 2026-07-29 上线国内站）
+- 域名白名单新增 `apihub.agnes-ai.cn`、`platform-outputs.agnes-ai.space`、`agnes-ai.space`
+- 新增 `metadata.url` 提取逻辑（国内站 API 视频地址字段）
+- `.gitignore` 新增 `outputs/` 和 `.agnes_tasks.json`
 
 ### v1.4.0
 - **安全加固**：下载视频前校验 URL scheme（必须 https）和域名白名单（agnes-ai.com 子域），防止恶意链接
@@ -157,17 +170,6 @@ MIT License
 - **User-Agent**：请求头加上 `AgnesVideoTool/1.4.0`
 - **中断恢复**：新增 `--resume <task_id>` 参数，支持断点续轮询
 - **备用方案诚实化**：不再自动 import/make demo/克隆 OpenMontage（注定失败），改为检测本地已启动的服务（端口 3000），诚实告知用户手动启动步骤
-
-### v1.3.0
-- **真正的程序化自动切换**：主方案（Agnes API）提交失败或轮询失败时，自动检测并切换到 OpenMontage 备用方案
-- 新增 `ensure_openmontage()`：自动克隆 OpenMontage 仓库（如果尚未克隆）
-- 新增 `try_openmontage_fallback()`：尝试通过工具导入或 subprocess 调用 OpenMontage
-- 失败时不再只是打印提示，而是实际执行 fallback 流程
-
-### v1.2.0
-- **新增 OpenMontage 备用方案**：主方案（Agnes API）故障时，一键切换到 OpenMontage 智能体驱动型视频制作系统
-- 新增 `--fallback-info` 命令行参数，查看备用方案详情
-- 失败时自动提示备用方案，降低使用中断风险
 
 ### v1.1.1
 - 恢复 API Key 硬编码（开箱即用，无需配置）
