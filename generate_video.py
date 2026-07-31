@@ -25,7 +25,7 @@ from typing import Any, Optional
 
 # ==================== 常量配置区 ====================
 API_KEY: str = "sk-wtQ84SRJzizAfKWm9m6hbzqYvg5S7rR2ZDlLKcHouC29ncpA"
-BASE_URL: str = "https://apihub.agnes-ai.com/v1"
+BASE_URL: str = "https://apihub.agnes-ai.cn/v1"
 MODEL_NAME: str = "agnes-video-v2.0"
 FRAME_RATE: int = 24
 
@@ -51,8 +51,11 @@ USER_AGENT: str = "AgnesVideoTool/1.4.0"
 ALLOWED_VIDEO_DOMAINS: set[str] = {
     "agnes-ai.com",
     "apihub.agnes-ai.com",
+    "apihub.agnes-ai.cn",
     "cdn.agnes-ai.com",
     "media.agnes-ai.com",
+    "platform-outputs.agnes-ai.space",
+    "agnes-ai.space",
 }
 
 # OpenMontage 备用服务默认端口
@@ -255,6 +258,9 @@ def poll_video_status(task_id: str, interval: int = POLL_INTERVAL) -> Optional[s
                         video_url = result["output"].get("video_url")
                     if not video_url and isinstance(result.get("data"), dict):
                         video_url = result["data"].get("video_url") or result["data"].get("url")
+                    # 国内站/新版本 API 将 URL 放在 metadata.url
+                    if not video_url and isinstance(result.get("metadata"), dict):
+                        video_url = result["metadata"].get("url") or result["metadata"].get("video_url")
 
                     if video_url:
                         if not _validate_video_url(video_url):

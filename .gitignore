@@ -28,3 +28,7 @@ ENV/
 # IDE
 .vscode/
 .idea/
+
+# Agnes Video Tool 本地产物
+outputs/
+.agnes_tasks.json
